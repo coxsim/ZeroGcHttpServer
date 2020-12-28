@@ -1,7 +1,10 @@
+
 import java.io.File
 import java.io.RandomAccessFile
+import java.net.InetSocketAddress
+import java.nio.channels.Selector
 
-class ComplexRequestHandler : RequestHandler {
+class ExampleRequestHandler : RequestHandler {
     private fun handleStatic(uriStart: Int, httpRequest: HttpRequest, clientConnection: HttpClientConnection) {
 
         val sb = StringBuilder(httpRequest.uriEnd - uriStart)
@@ -35,7 +38,7 @@ class ComplexRequestHandler : RequestHandler {
         }
     }
 
-    private fun handleDynamic(uriStart: Int, httpRequest: HttpRequest, clientConnection: HttpClientConnection) {
+    private fun handleDynamic(httpRequest: HttpRequest, clientConnection: HttpClientConnection) {
         val content = "<html><body>Hello World! <pre>${httpRequest.uri}</pre></body></html>"
 
         clientConnection.write("HTTP/1.1 200 OK\r\n")
@@ -59,7 +62,15 @@ class ComplexRequestHandler : RequestHandler {
 
         when {
             match(httpRequest.uriStart, "/static/".toCharArray(), 0) -> handleStatic(httpRequest.uriStart + "/static/".length, httpRequest, clientConnection)
-            else -> handleDynamic(httpRequest.uriStart, httpRequest, clientConnection)
+            else -> handleDynamic(httpRequest, clientConnection)
         }
     }
+}
+
+
+fun main() {
+    val requestHandler = ExampleRequestHandler()
+
+    val server = HttpServer(Selector.open(), InetSocketAddress(8080), requestHandler)
+    server.run()
 }

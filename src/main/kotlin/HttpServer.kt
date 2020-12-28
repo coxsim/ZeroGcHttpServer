@@ -1,5 +1,5 @@
-import java.net.InetSocketAddress
 import java.net.SocketAddress
+import java.net.SocketException
 import java.nio.ByteBuffer
 import java.nio.channels.*
 
@@ -34,6 +34,7 @@ data class HttpClientConnection(
         fun trace(message: Any?, arg2: Any?) = consoleLogger.trace(socketChannel.remoteAddress, ": ", message, arg2)
         fun trace(message: Any?, arg2: Any?, arg3: Any?, arg4: Any?, arg5: Any?) = consoleLogger.trace(socketChannel.remoteAddress, ": ", message, arg2, arg3, arg4, arg5)
         fun debug(message: Any?) = consoleLogger.debug(socketChannel.remoteAddress, ": ", message)
+        fun debug(message: Any?, arg2: Any?) = consoleLogger.debug(socketChannel.remoteAddress, ": ", message, arg2)
         fun info(message: Any?) = consoleLogger.info(socketChannel.remoteAddress, ": ", message)
     }
 
@@ -59,6 +60,8 @@ data class HttpClientConnection(
     private fun handleConnectionClosed(key: SelectionKey) {
         key.cancel()
         socketChannel.close()
+        _requestBuffer?.obj?.clear()
+        _requestBuffer?.release()
     }
 
     interface ReadingState {
@@ -87,19 +90,25 @@ data class HttpClientConnection(
 
 
         logger.trace(requestBuffer)
-        val bytesRead = socketChannel.read(requestBuffer)
-        logger.trace("handleSelect bytesRead = ", bytesRead)
+        try {
+            val bytesRead = socketChannel.read(requestBuffer)
+            logger.trace("handleSelect bytesRead = ", bytesRead)
 
 
-        if (bytesRead < 0) {
-            handleConnectionClosed(key)
-        } else if (bytesRead > 0) {
-            requestBuffer.flip()
-            state = state.handleBytesRead(startPos = startPos, endPos = startPos + bytesRead)
-            // TODO: check if state is 'new' and reset buffer if so
+            if (bytesRead < 0) {
+                handleConnectionClosed(key)
+            } else if (bytesRead > 0) {
+                requestBuffer.flip()
+                state = state.handleBytesRead(startPos = startPos, endPos = startPos + bytesRead)
+                // TODO: check if state is 'new' and reset buffer if so
 //      requestBuffer.flip()
 
-            requestBuffer.clear()
+                requestBuffer.clear()
+            }
+        }
+        catch (e: SocketException) {
+            logger.debug("Connection Exception: ", e.message)
+            handleConnectionClosed(key)
         }
     }
 
@@ -116,7 +125,7 @@ data class HttpClientConnection(
                 return if (index >= endPos) this
                 else {
                     val ch = requestBuffer.get(index)
-                    print(ch.toChar())
+                    if (ch != '\r'.toByte()) print(ch.toChar())
 
                     if (requestBuffer.get(index) == CarriageReturn) {
                         logger.debug("CarriageReturn")
@@ -265,12 +274,14 @@ data class HttpClientConnection(
         return bytesTransferred < fileSize
     }
 
+    fun write(value: Char): Boolean = write(value.toString())
+    fun write(value: Int): Boolean = write(value.toString())
     fun write(value: String): Boolean = write(ByteBuffer.wrap(value.encodeToByteArray()))
 
 
 }
 
-interface RequestHandler {
+fun interface RequestHandler {
     fun handleRequest(httpRequest: HttpRequest, clientConnection: HttpClientConnection)
 }
 
@@ -302,7 +313,7 @@ class HttpServer(private val selector: Selector,
                     val key = it.next()
                     if (key.isAcceptable) {
                         val socketChannel = serverSocketChannel.accept()
-                        logger.debug("Accepting connection from ${socketChannel.remoteAddress}")
+                        logger.debug("Accepting connection from ", socketChannel.remoteAddress)
                         // TODO client connection needs releasing back to pool
                         connectionPool.acquire().apply { obj.init(selector, socketChannel, bufferPool, requestHandler) }
                     }
@@ -358,12 +369,4 @@ data class Header(
     override fun toString() = StringBuilder(end - start).apply {
         for (i in start until end) append(buffer!![i].toChar())
     }.toString()
-}
-
-
-fun main() {
-    val requestHandler = ComplexRequestHandler()
-
-    val server = HttpServer(Selector.open(), InetSocketAddress(8080), requestHandler)
-    server.run()
 }

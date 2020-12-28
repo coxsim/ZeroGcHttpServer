@@ -12,20 +12,41 @@ repositories {
     mavenCentral()
 }
 
+sourceSets {
+    create("integrationTest") {
+        compileClasspath += sourceSets.main.get().output
+        runtimeClasspath += sourceSets.main.get().output
+    }
+}
+
+val integrationTestImplementation by configurations.getting {
+    extendsFrom(configurations.implementation.get(), configurations.testImplementation.get())
+}
+
+configurations["integrationTestRuntimeOnly"].extendsFrom(configurations.runtimeOnly.get())
+
+
 dependencies {
     testImplementation(kotlin("test-junit5"))
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.6.0")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.6.0")
+
+    integrationTestImplementation("org.litote.kmongo:kmongo:4.2.3")
 }
 
 application {
-    mainClass.set("HttpServerKt")
+    mainClass.set("DynamicRequestHandlerKt")
 }
 
 tasks.test {
     useJUnitPlatform()
 }
 
+
 tasks.withType<KotlinCompile>() {
     kotlinOptions.jvmTarget = "13"
+}
+val compileKotlin: KotlinCompile by tasks
+compileKotlin.kotlinOptions {
+    freeCompilerArgs = listOf("-Xinline-classes")
 }

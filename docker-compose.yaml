@@ -1,0 +1,6 @@
+version: "3.9"  # optional since v1.27.0
+services:
+  server:
+    image: docker.io/coxsim/zero-gc-http-server:latest
+    ports:
+      - "8080:8080"
